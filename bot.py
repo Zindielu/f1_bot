@@ -2,20 +2,29 @@ import telebot
 import time
 import threading
 import sqlite3
+import pytz
 from datetime import datetime, timedelta
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ==========================================
-# НАСТРОЙКИ (МЕНЯЙ ЗДЕСЬ)
+# НАСТРОЙКИ
 # ==========================================
-# ВСТАВЬ СЮДА СВОЙ ТОКЕН ОТ BOTFATHER (между кавычками)
+# ВСТАВЬ СЮДА СВОЙ ТОКЕН (между кавычками)
 BOT_TOKEN = "9023464869:AAG7tjtHT0msE1bvkb_U00ucfOvfGJgSuak"
 
-# ТВОЙ ADMIN_ID (для пересылки жалоб и статистики)
+# ТВОЙ ADMIN_ID
 ADMIN_ID = 7102362294 
 
 # ==========================================
-# БАЗА ДАННЫХ (чтобы подписчики не терялись)
+# ВРЕМЯ ПО МСК
+# ==========================================
+MSK = pytz.timezone('Europe/Moscow')
+
+def get_now():
+    return datetime.now(MSK)
+
+# ==========================================
+# БАЗА ДАННЫХ
 # ==========================================
 def init_db():
     conn = sqlite3.connect('bot.db')
@@ -56,29 +65,27 @@ def get_subscribers():
     return subs
 
 # ==========================================
-# РАСПИСАНИЕ (МЕНЯЙ ЗДЕСЬ)
+# РАСПИСАНИЕ (МСК)
 # ==========================================
-# Формат: (Год, Месяц, День, Час, Минута, Название)
-# Время указано по МСК!
 WEEKENDS = {
     "🇶🇦 Гран-при Катара (27-29 ноя)": [
-        (datetime(2026, 11, 27, 16, 30), "Практика 1"),
-        (datetime(2026, 11, 27, 20, 0), "Практика 2"),
-        (datetime(2026, 11, 28, 17, 30), "Практика 3"),
-        (datetime(2026, 11, 28, 21, 0), "Квалификация"),
-        (datetime(2026, 11, 29, 19, 0), "🏁 ГОНКА")
+        (MSK.localize(datetime(2026, 11, 27, 16, 30)), "Практика 1"),
+        (MSK.localize(datetime(2026, 11, 27, 20, 0)), "Практика 2"),
+        (MSK.localize(datetime(2026, 11, 28, 17, 30)), "Практика 3"),
+        (MSK.localize(datetime(2026, 11, 28, 21, 0)), "Квалификация"),
+        (MSK.localize(datetime(2026, 11, 29, 19, 0)), "🏁 ГОНКА")
     ],
     "🇦🇪 Гран-при Абу-Даби (4-6 дек)": [
-        (datetime(2026, 12, 4, 12, 30), "Практика 1"),
-        (datetime(2026, 12, 4, 16, 0), "Практика 2"),
-        (datetime(2026, 12, 5, 13, 30), "Практика 3"),
-        (datetime(2026, 12, 5, 17, 0), "Квалификация"),
-        (datetime(2026, 12, 6, 16, 0), "🏁 ГОНКА")
+        (MSK.localize(datetime(2026, 12, 4, 12, 30)), "Практика 1"),
+        (MSK.localize(datetime(2026, 12, 4, 16, 0)), "Практика 2"),
+        (MSK.localize(datetime(2026, 12, 5, 13, 30)), "Практика 3"),
+        (MSK.localize(datetime(2026, 12, 5, 17, 0)), "Квалификация"),
+        (MSK.localize(datetime(2026, 12, 6, 16, 0)), "🏁 ГОНКА")
     ]
 }
 
 # ==========================================
-# КЛАВИАТУРЫ (КНОПКИ)
+# КЛАВИАТУРЫ
 # ==========================================
 def get_start_keyboard():
     markup = InlineKeyboardMarkup()
@@ -112,8 +119,14 @@ def get_weekend_keyboard():
     markup.add(InlineKeyboardButton("⬅️ Назад", callback_data="back"))
     return markup
 
+def get_feedback_admin_keyboard(user_id):
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("🚫 Забанить", callback_data=f"ban_{user_id}"))
+    markup.add(InlineKeyboardButton("💬 Ответить", callback_data=f"reply_{user_id}"))
+    return markup
+
 # ==========================================
-# ИНИЦИАЛИЗАЦИЯ БОТА
+# ИНИЦИАЛИЗАЦИЯ
 # ==========================================
 try:
     bot = telebot.TeleBot(BOT_TOKEN)
@@ -122,8 +135,11 @@ try:
 except Exception as e:
     print(f"Ошибка при запуске: {e}")
 
+# Для режима ответа админа
+reply_mode = {}
+
 # ==========================================
-# ОБРАБОТЧИКИ КОМАНД И КНОПОК
+# ОБРАБОТЧИКИ
 # ==========================================
 @bot.message_handler(commands=['start'])
 def start_message(message):
@@ -145,14 +161,16 @@ def handle_callback(call):
         all_events = []
         for weekend in WEEKENDS.values():
             all_events.extend(weekend)
-        upcoming = [e for e in all_events if e[0] > datetime.now()]
+        
+        now = get_now()
+        upcoming = [e for e in all_events if e[0] > now]
         
         if not upcoming:
             text = "Пока нет будущих событий."
         else:
             upcoming.sort(key=lambda x: x[0])
             next_date, next_name = upcoming[0]
-            delta = next_date - datetime.now()
+            delta = next_date - now
             days, hours, minutes = delta.days, delta.seconds // 3600, (delta.seconds % 3600) // 60
             text = f"🏁 Ближайшее событие: *{next_name}*\n📅 Старт: {next_date.strftime('%d.%m в %H:%M')} (МСК)\n⏳ Осталось: {days} д. {hours} ч. {minutes} мин."
         
@@ -186,34 +204,56 @@ def handle_callback(call):
     elif call.data == "back":
         bot.edit_message_text("Главное меню:", chat_id, call.message.message_id, reply_markup=get_main_keyboard(chat_id))
 
+    # --- ОБРАБОТКА КНОПОК АДМИНА ---
+    elif call.data.startswith("ban_"):
+        user_id = int(call.data.split("_")[1])
+        bot.send_message(user_id, "🚫 Твоя жалоба отклонена. Выдан мут на 24 часа за нарушение правил.")
+        bot.edit_message_text("🚫 Пользователь забанен на 24 часа.", chat_id, call.message.message_id)
+
+    elif call.data.startswith("reply_"):
+        user_id = int(call.data.split("_")[1])
+        reply_mode[chat_id] = user_id
+        bot.send_message(chat_id, "💬 Напиши текст ответа для пользователя:")
+
 @bot.message_handler(commands=['stats'])
 def stats(message):
     if message.chat.id != ADMIN_ID:
         bot.send_message(message.chat.id, "У тебя нет прав на эту команду.")
         return
-    
     all_u = get_all_users()
     subs = get_subscribers()
     bot.send_message(ADMIN_ID, f"📊 Всего пользователей: {len(all_u)}\n🔔 Подписчиков: {len(subs)}")
 
 # ==========================================
-# ОБРАБОТКА ТЕКСТОВЫХ СООБЩЕНИЙ (ЖАЛОБЫ)
+# ОБРАБОТКА СООБЩЕНИЙ (ЖАЛОБЫ И ОТВЕТЫ)
 # ==========================================
 @bot.message_handler(func=lambda message: True)
 def handle_all_messages(message):
+    # Если админ в режиме ответа
+    if message.chat.id == ADMIN_ID and message.chat.id in reply_mode:
+        user_id = reply_mode[message.chat.id]
+        bot.send_message(user_id, f"💬 *Ответ разработчика:*\n\n{message.text}", parse_mode='Markdown')
+        bot.send_message(ADMIN_ID, "✅ Ответ отправлен пользователю.")
+        del reply_mode[message.chat.id]
+        return
+
+    # Если это обычный пользователь и не команда
     if message.text.startswith('/'):
         bot.send_message(message.chat.id, "Я не знаю такой команды. Используй кнопки ниже.", reply_markup=get_main_keyboard(message.chat.id))
     else:
-        bot.send_message(ADMIN_ID, f"📩 Жалоба от {message.from_user.username} (ID: {message.chat.id}):\n\n{message.text}")
+        # Пересылаем жалобу админу с кнопками
+        bot.send_message(ADMIN_ID, 
+                         f"📩 Жалоба от {message.from_user.username} (ID: {message.chat.id}):\n\n{message.text}",
+                         reply_markup=get_feedback_admin_keyboard(message.chat.id))
         bot.send_message(message.chat.id, "✅ Спасибо! Твоя жалоба передана разработчику.", reply_markup=get_main_keyboard(message.chat.id))
 
 # ==========================================
-# НАПОМИНАНИЯ (ФОНОВЫЙ ПРОЦЕСС)
+# НАПОМИНАНИЯ
 # ==========================================
 def reminder_worker():
     sent_reminders = set()
     while True:
-        now = datetime.now()
+        now = get_now()
         subs = get_subscribers()
         
         for weekend_name, events in WEEKENDS.items():
