@@ -9,7 +9,6 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 # ==========================================
 # НАСТРОЙКИ
 # ==========================================
-# ВСТАВЬ СЮДА СВОЙ ТОКЕН
 BOT_TOKEN = "9023464869:AAG7tjtHT0msE1bvkb_U00ucfOvfGJgSuak"
 ADMIN_ID = 7102362294 
 
@@ -17,7 +16,7 @@ MSK = pytz.timezone('Europe/Moscow')
 def get_now(): return datetime.now(MSK)
 
 # ==========================================
-# СПИСКИ (ПИЛОТЫ И КОМАНДЫ)
+# СПИСКИ
 # ==========================================
 PILOTS = [
     "Макс Ферстаппен", "Исаак Хаджаp", "Ландо Норрис", "Оскар Пиастри",
@@ -143,12 +142,6 @@ def get_main_keyboard(chat_id):
         markup.add(InlineKeyboardButton("🏁 Ближайшая гонка", callback_data="next"))
         markup.add(InlineKeyboardButton("📅 Все гонки", callback_data="racedate"))
         
-        pilot, team = get_user_data(chat_id)
-        p_text = f"👤 {pilot}" if pilot else "👤 Мой пилот"
-        t_text = f"🏎️ {team}" if team else "🏎️ Моя команда"
-        markup.add(InlineKeyboardButton(p_text, callback_data="choose_pilot"))
-        markup.add(InlineKeyboardButton(t_text, callback_data="choose_team"))
-        
         conn = sqlite3.connect('bot.db')
         cursor = conn.cursor()
         cursor.execute("SELECT is_subscribed FROM users WHERE chat_id = ?", (chat_id,))
@@ -156,11 +149,19 @@ def get_main_keyboard(chat_id):
         conn.close()
         is_sub = res[0] if res else 0
         
-        if is_sub == 0:
-            markup.add(InlineKeyboardButton("🔔 Подписаться", callback_data="subscribe"))
-        else:
+        # === ЛОГИКА: КНОПКИ ПИЛОТА И КОМАНДЫ ТОЛЬКО ДЛЯ ПОДПИСЧИКОВ ===
+        if is_sub == 1:
+            pilot, team = get_user_data(chat_id)
+            p_text = f"👤 {pilot}" if pilot else "👤 Мой пилот"
+            t_text = f"🏎️ {team}" if team else "🏎️ Моя команда"
+            markup.add(InlineKeyboardButton(p_text, callback_data="choose_pilot"))
+            markup.add(InlineKeyboardButton(t_text, callback_data="choose_team"))
+            
             markup.add(InlineKeyboardButton("📩 Сообщить о проблеме", callback_data="feedback"))
             markup.add(InlineKeyboardButton("🔕 Отписаться", callback_data="unsubscribe"))
+        else:
+            markup.add(InlineKeyboardButton("🔔 Подписаться", callback_data="subscribe"))
+            
         return markup
     except: return InlineKeyboardMarkup()
 
@@ -280,7 +281,7 @@ def handle_callback(call):
             conn.commit()
             conn.close()
             bot.send_message(chat_id, "✅ Поздравляю, ты подписан! Я пришлю напоминания за час, за 10 минут и в момент старта.\n\n"
-                                      "💡 Если захочешь отписаться, просто нажми «Отписаться».", 
+                                      "💡 Теперь ты можешь выбрать любимого пилота и команду!", 
                              reply_markup=get_main_keyboard(chat_id))
 
         elif call.data == "unsubscribe":
