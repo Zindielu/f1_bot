@@ -10,7 +10,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 # НАСТРОЙКИ
 # ==========================================
 # ВСТАВЬ СЮДА СВОЙ ТОКЕН
-BOT_TOKEN = ""
+BOT_TOKEN = "9023464869:AAG7tjtHT0msE1bvkb_U00ucfOvfGJgSuak"
 ADMIN_ID = 7102362294 
 
 MSK = pytz.timezone('Europe/Moscow')
