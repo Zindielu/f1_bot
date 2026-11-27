@@ -16,7 +16,7 @@ MSK = pytz.timezone('Europe/Moscow')
 def get_now(): return datetime.now(MSK)
 
 # ==========================================
-# СПИСКИ
+# СПИСКИ (ПИЛОТЫ И КОМАНДЫ)
 # ==========================================
 PILOTS = [
     "Макс Ферстаппен", "Исаак Хаджаp", "Ландо Норрис", "Оскар Пиастри",
@@ -32,6 +32,49 @@ TEAMS = [
     "Aston Martin", "Alpine", "Williams", "Racing Bulls", 
     "Haas", "Audi", "Cadillac"
 ]
+
+# ==========================================
+# РЕЗУЛЬТАТЫ (ПРАКТИКА 2)
+# ==========================================
+# Формат: { "Пилот": позиция, "Команда": очки }
+FP2_RESULTS = {
+    "Кими Антонелли": 1,
+    "Джордж Расселл": 2,
+    "Ландо Норрис": 3,
+    "Оскар Пиастри": 4,
+    "Макс Ферстаппен": 5,
+    "Исаак Хаджаp": 6,
+    "Шарль Леклер": 7,
+    "Льюис Хэмилтон": 8,
+    "Лайам Лоусон": 9,
+    "Арвид Линдблад": 10,
+    "Габриэль Бортолето": 11,
+    "Пьер Гасли": 12,
+    "Нико Хюлькенберг": 13,
+    "Александр Албон": 14,
+    "Франко Колапинто": 15,
+    "Карлос Сайнс": 16,
+    "Рафаэль Камара": 17,
+    "Оливер Берман": 18,
+    "Фернандо Алонсо": 19,
+    "Лэнс Стролл": 20,
+    "Валттери Боттас": 21,
+    "Серхио Перес": 22
+}
+
+TEAM_RESULTS = {
+    "Mercedes": "Лучшее время (1-2 места)",
+    "McLaren": "3-4 места",
+    "Red Bull Racing": "5-6 места",
+    "Ferrari": "7-8 места",
+    "Racing Bulls": "9-10 места",
+    "Audi": "11, 13 места",
+    "Alpine": "12, 15 места",
+    "Williams": "14, 16 места",
+    "Haas": "17, 18 места",
+    "Aston Martin": "19, 20 места",
+    "Cadillac": "21, 22 места"
+}
 
 # ==========================================
 # БАЗА ДАННЫХ
@@ -149,7 +192,6 @@ def get_main_keyboard(chat_id):
         conn.close()
         is_sub = res[0] if res else 0
         
-        # === ЛОГИКА: КНОПКИ ПИЛОТА И КОМАНДЫ ТОЛЬКО ДЛЯ ПОДПИСЧИКОВ ===
         if is_sub == 1:
             pilot, team = get_user_data(chat_id)
             p_text = f"👤 {pilot}" if pilot else "👤 Мой пилот"
@@ -206,6 +248,47 @@ try:
 except Exception as e: print(f"Ошибка при запуске: {e}")
 
 reply_mode = {}
+
+# ==========================================
+# РАССЫЛКА РЕЗУЛЬТАТОВ (Вызовется один раз при запуске)
+# ==========================================
+def send_results():
+    print("Начинаю рассылку результатов...")
+    subs = get_subscribers()
+    
+    # 1. Общая рассылка
+    general_text = "🏁 **Результаты Практики 2 (Катар):**\n\n"
+    for pilot, place in sorted(FP2_RESULTS.items(), key=lambda x: x[1]):
+        general_text += f"{place}. {pilot}\n"
+    
+    for user in subs:
+        try: 
+            bot.send_message(user, general_text, parse_mode='Markdown')
+            time.sleep(0.1)
+        except: pass
+
+    # 2. Персональная рассылка (только тем, у кого выбран пилот/команда)
+    for user in subs:
+        pilot, team = get_user_data(user)
+        if pilot or team:
+            personal_text = "🏎️ **Твой персональный результат:**\n\n"
+            if pilot and pilot in FP2_RESULTS:
+                place = FP2_RESULTS[pilot]
+                personal_text += f"👤 Твой любимый пилот *{pilot}* показал {place}-е время.\n"
+            if team and team in TEAM_RESULTS:
+                team_info = TEAM_RESULTS[team]
+                personal_text += f"🏎️ Твоя любимая команда *{team}*: {team_info}.\n"
+            
+            try:
+                bot.send_message(user, personal_text, parse_mode='Markdown')
+                time.sleep(0.1)
+            except: pass
+    
+    print("Рассылка завершена!")
+
+# Запускаем рассылку в отдельном потоке, чтобы не блокировать бота
+threading.Thread(target=send_results, daemon=True).start()
+
 
 # ==========================================
 # ОБРАБОТЧИКИ
@@ -287,10 +370,10 @@ def handle_callback(call):
         elif call.data == "unsubscribe":
             conn = sqlite3.connect('bot.db')
             cursor = conn.cursor()
-            cursor.execute("UPDATE users SET is_subscribed = 0 WHERE chat_id = ?", (chat_id,))
+            cursor.execute("UPDATE users SET is_subscribed = 0, favorite_pilot = NULL, favorite_team = NULL WHERE chat_id = ?", (chat_id,))
             conn.commit()
             conn.close()
-            bot.send_message(chat_id, "❌ Ты отписан. Больше не буду присылать уведомления.", 
+            bot.send_message(chat_id, "❌ Ты отписан. Все данные о любимом пилоте и команде удалены.", 
                              reply_markup=get_main_keyboard(chat_id))
 
         elif call.data == "feedback":
